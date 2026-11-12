@@ -1,17 +1,20 @@
 """Deterministic, deliberately lo-fi visual feedback. CPU-based and checkpoint-free."""
 from __future__ import annotations
 
-import json
 import math
+import os
 import subprocess
+import time
+from dataclasses import dataclass
 from pathlib import Path
 
 import cv2
 import numpy as np
 
 from .audio import Analysis
+from .modulation import ModulationEngine, Preset, builtin_names, load_preset
 
-PRESETS = ("analog-feedback", "industrial-decay", "minimal-signal")
+PRESETS = builtin_names()
 
 
 def _texture(rng: np.random.Generator, width: int, height: int) -> np.ndarray:
@@ -41,10 +44,12 @@ def load_source(source: Path | None, width: int, height: int, rng: np.random.Gen
 
 
 class FeedbackRenderer:
-    def __init__(self, source: np.ndarray, *, preset: str, seed: int, fps: int):
-        if preset not in PRESETS:
-            raise ValueError(f"Unknown preset {preset}. Choose from {PRESETS}")
-        self.preset = preset
+    """Feedback renderer; every time-varying quantity comes from the preset's modulation engine."""
+
+    def __init__(self, source: np.ndarray, *, preset: Preset | str | Path, seed: int, fps: int):
+        self.preset = preset if isinstance(preset, Preset) else load_preset(preset)
+        self.engine = ModulationEngine(self.preset, fps)
+        self.settings = self.engine.settings
         self.source = source
         self.state = source.copy()
         self.height, self.width = source.shape[:2]
@@ -57,59 +62,70 @@ class FeedbackRenderer:
 
     def frame(self, index: int, features: dict[str, float]) -> np.ndarray:
         t = index / self.fps
-        low = float(features.get("low", 0))
-        mid = float(features.get("mid", 0))
-        high = float(features.get("high", 0))
-        flux = float(features.get("flux", 0))
-        slow = float(features.get("slow", 0))
-        if self.preset == "minimal-signal":
-            persistence, strength, tint = .974, 0.6, (0.90, 0.95, 1.00)
-        elif self.preset == "industrial-decay":
-            persistence, strength, tint = .985, 3.5, (0.70, 0.88, 1.04)
-        else:
-            persistence, strength, tint = .973, 2.0, (0.85, 0.95, 1.03)
-        # Autonomous motion never freezes, even when input dynamics are constant.
-        zoom = 1.001 + .011 * low + .002 * math.sin(t * .41)
-        rotation = .085 * math.sin(t * .23) + .08 * mid
-        matrix = cv2.getRotationMatrix2D((self.width / 2, self.height / 2), rotation, zoom)
-        matrix[0, 2] += .35 * math.sin(t * .37)
-        matrix[1, 2] += .35 * math.cos(t * .31)
+        p = self.engine.params(index, features)
+        cfg = self.settings
+        matrix = cv2.getRotationMatrix2D((self.width / 2, self.height / 2), p["rotation"], p["zoom"])
+        matrix[0, 2] += p["shift_x"]
+        matrix[1, 2] += p["shift_y"]
         moved = cv2.warpAffine(self.state, matrix, (self.width, self.height), borderMode=cv2.BORDER_REFLECT101)
-        warp = strength * (.3 + mid)
-        map_x = self.x + warp * np.sin(self.y * .023 + t * .63 + low * 3.0)
-        map_y = self.y + warp * np.cos(self.x * .017 + t * .43 + mid * 2.0)
-        moved = cv2.remap(moved, map_x, map_y, interpolation=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT101)
-        if self.preset == "industrial-decay":
-            edges = cv2.Canny(moved, 60, 120)
-            moved = cv2.addWeighted(moved, .95, cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR), .15 + .2 * mid, 0)
+        if p["warp"] > 0:
+            speed_x, speed_y = cfg["warp_speed"]
+            map_x = self.x + p["warp"] * np.sin(self.y * .023 + t * speed_x + p["warp_phase_x"])
+            map_y = self.y + p["warp"] * np.cos(self.x * .017 + t * speed_y + p["warp_phase_y"])
+            moved = cv2.remap(moved, map_x, map_y, interpolation=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT101)
+        if p["edge_gain"] > 0:
+            edges = cv2.Canny(cv2.GaussianBlur(moved, (0, 0), 2.0), 25, 70)
+            # Zero-mean edge overlay: adds structure without shifting overall brightness.
+            edge_layer = edges.astype(np.float32)
+            edge_layer -= edge_layer.mean()
+            moved = np.clip(moved + p["edge_gain"] * edge_layer[..., None], 0, 255).astype(np.uint8)
         # Feed some of the original texture back in, preventing eventual flatness.
-        frame = cv2.addWeighted(moved, persistence, self.source, 1 - persistence, 0)
-        if self.preset == "minimal-signal":
+        frame = cv2.addWeighted(moved, p["persistence"], self.source, 1 - p["persistence"], 0)
+        if cfg["blur"]:
             frame = cv2.GaussianBlur(frame, (3, 3), .3)
-        else:
-            if flux > .45:
-                lines = int(1 + 5 * flux)
-                for _ in range(lines):
-                    y = int(self.rng.integers(0, self.height))
-                    block_h = int(self.rng.integers(1, max(2, self.height // 35)))
-                    shift = int(self.rng.integers(-18, 19) * flux)
-                    frame[y:y + block_h] = np.roll(frame[y:y + block_h], shift, axis=1)
-        # Quantization, slight electronic flicker, grit and palette tint.
-        levels = 24 if self.preset == "minimal-signal" else 12
-        frame = ((frame // (256 // levels)) * (256 // levels)).astype(np.float32)
-        frame *= (.83 + .22 * slow) * np.asarray(tint, dtype=np.float32)
-        if self.preset != "minimal-signal":
-            noise = self.rng.normal(0, 2 + high * 17, (self.height, self.width, 1))
-            frame += noise
-        frame = np.clip(frame, 0, 255).astype(np.uint8)
+        glitch = p["glitch"]
+        if glitch > cfg["glitch_threshold"]:
+            for _ in range(int(1 + 5 * glitch)):
+                y = int(self.rng.integers(0, self.height))
+                block_h = int(self.rng.integers(1, max(2, self.height // 35)))
+                shift = int(self.rng.integers(-18, 19) * glitch)
+                frame[y:y + block_h] = np.roll(frame[y:y + block_h], shift, axis=1)
+        # The feedback state stays neutral; gain, tint, quantization and grit only touch the
+        # displayed copy, otherwise they compound every frame (fade to black / saturation).
         self.state = frame
-        return frame
+        step = max(1, 256 // int(cfg["levels"]))
+        out = (np.round(frame.astype(np.float32) / step) * step)
+        out *= p["brightness"] * np.asarray(cfg["tint"], dtype=np.float32)
+        if p["grain"] > 0:
+            out += self.rng.normal(0, p["grain"], (self.height, self.width, 1))
+        frame = np.clip(out, 0, 255).astype(np.uint8)
+        # Display-only palette: hue shift and saturation lift.
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV).astype(np.int16)
+        hsv[..., 0] = (hsv[..., 0] + int(p["hue_shift"])) % 180
+        hsv[..., 1] = np.clip(hsv[..., 1] * cfg["saturation"] + 25, 0, 255)
+        return cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
+
+
+class RenderTimeout(RuntimeError):
+    pass
+
+
+@dataclass(frozen=True)
+class RenderInfo:
+    ffmpeg_command: list[str]  # as run, with the final output path substituted for the temp file
+    frames: int
+    width: int
+    height: int
+    crf: int
 
 
 def render(
     *, audio: Path, output: Path, analysis: Analysis, source: Path | None,
-    preset: str, width: int, height: int, seed: int, crf: int = 20,
-) -> None:
+    preset: Preset | str | Path, width: int, height: int, seed: int, crf: int = 20,
+    max_seconds: float | None = None,
+) -> RenderInfo:
+    """Render to ``<output>.partial.mp4`` and rename on success, so a cancelled, failed or timed-out
+    render never leaves a truncated file or clobbers an existing output."""
     if width < 32 or height < 32 or width % 2 or height % 2:
         raise ValueError("width and height must be even and at least 32")
     if not (0 <= crf <= 51):
@@ -117,6 +133,7 @@ def render(
     rng = np.random.default_rng(seed)
     visual = FeedbackRenderer(load_source(source, width, height, rng), preset=preset, seed=seed, fps=analysis.fps)
     output.parent.mkdir(parents=True, exist_ok=True)
+    partial = output.with_name(output.stem + ".partial" + output.suffix)
     cmd = [
         "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
         "-f", "rawvideo", "-pix_fmt", "bgr24", "-s", f"{width}x{height}",
@@ -124,12 +141,16 @@ def render(
         "-map", "0:v:0", "-map", "1:a:0", "-c:v", "libx264",
         "-preset", "veryfast", "-crf", str(crf), "-pix_fmt", "yuv420p",
         "-c:a", "aac", "-b:a", "192k", "-t", f"{analysis.duration:.6f}",
-        "-movflags", "+faststart", str(output),
+        "-movflags", "+faststart", str(partial),
     ]
+    deadline = None if max_seconds is None else time.monotonic() + max_seconds
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
     try:
         assert proc.stdin is not None
-        for i in range(len(analysis.features["rms"])):
+        frames = len(analysis.features["rms"])
+        for i in range(frames):
+            if deadline is not None and time.monotonic() > deadline:
+                raise RenderTimeout(f"render exceeded --max-seconds {max_seconds} at frame {i}/{frames}")
             frame_features = {k: float(v[i]) for k, v in analysis.features.items()}
             proc.stdin.write(visual.frame(i, frame_features).tobytes())
         proc.stdin.close()
@@ -137,9 +158,11 @@ def render(
         _, stderr = proc.communicate()
         if proc.returncode:
             raise RuntimeError(f"ffmpeg encoding failed: {stderr.decode(errors='replace')}")
+        os.replace(partial, output)
     except BaseException:
         if proc.poll() is None:
             proc.kill()
         proc.wait()
-        output.unlink(missing_ok=True)
+        partial.unlink(missing_ok=True)
         raise
+    return RenderInfo([*cmd[:-1], str(output)], frames, width, height, crf)

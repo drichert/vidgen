@@ -66,3 +66,15 @@ def test_end_to_end_mp4(tmp_path):
     if shutil.which("ffprobe"):
         data = subprocess.check_output(["ffprobe", "-v", "error", "-show_entries", "stream=codec_type", "-of", "csv=p=0", str(output)], text=True)
         assert "video" in data and "audio" in data
+
+
+@pytest.mark.parametrize("preset", PRESETS)
+def test_feedback_does_not_collapse_or_saturate(preset):
+    # Regression: gain/tint/quantization used to compound inside the feedback state.
+    renderer = FeedbackRenderer(load_source(None, 96, 64, np.random.default_rng(3)), preset=preset, seed=3, fps=12)
+    features = {"low": .3, "mid": .3, "high": .2, "flux": .2, "slow": .5}
+    for i in range(240):
+        frame = renderer.frame(i, features)
+    gray = frame.mean(axis=2)
+    assert 40 < gray.mean() < 215
+    assert gray.std() > 8

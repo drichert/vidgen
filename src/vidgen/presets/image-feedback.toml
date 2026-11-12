@@ -1,0 +1,90 @@
+name = "image-feedback"
+description = "Colour-preserving feedback for supplied or ComfyUI-generated images: no hue rotation, low saturation lift, finer quantization."
+
+[settings]
+tint = [1.0, 1.0, 1.0]
+levels = 32
+saturation = 1.0
+
+[params]
+persistence = 0.96
+zoom = 1.001
+warp = 0.6
+hue_shift = 0
+brightness = 1.0
+grain = 2
+
+[[mappings]]
+feature = "low"
+param = "zoom"
+scale = 0.011
+
+[[mappings]]
+feature = "lfo"
+param = "zoom"
+scale = 0.002
+rate_hz = 0.06525
+
+[[mappings]]
+feature = "lfo"
+param = "rotation"
+scale = 0.085
+rate_hz = 0.03661
+
+[[mappings]]
+feature = "mid"
+param = "rotation"
+scale = 0.08
+
+[[mappings]]
+feature = "lfo"
+param = "shift_x"
+scale = 0.35
+rate_hz = 0.05889
+
+[[mappings]]
+feature = "lfo"
+param = "shift_y"
+scale = 0.35
+rate_hz = 0.04934
+phase_deg = 90
+
+[[mappings]]
+feature = "mid"
+param = "warp"
+scale = 2.0
+
+[[mappings]]
+feature = "low"
+param = "warp_phase_x"
+scale = 3.0
+
+[[mappings]]
+feature = "mid"
+param = "warp_phase_y"
+scale = 2.0
+
+[[mappings]]
+feature = "lfo"
+param = "hue_shift"
+scale = 6
+rate_hz = 0.00796
+
+[[mappings]]
+feature = "slow"
+param = "hue_shift"
+scale = 8
+
+[[mappings]]
+feature = "slow"
+param = "brightness"
+scale = 0.2
+
+[[mappings]]
+feature = "flux"
+param = "glitch"
+
+[[mappings]]
+feature = "high"
+param = "grain"
+scale = 6

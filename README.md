@@ -47,7 +47,28 @@ uv run vidgen render --audio track.wav --comfy-workflow workflows/still-api.json
 uv run vidgen analyze --audio track.wav --duration 30 --fps 12 --output outputs/features.json
 ```
 
-Feature curves are normalized per clip: `low` (30–180 Hz), `mid` (180–2000 Hz), `high` (2–9 kHz), RMS, positive spectral flux, and slow RMS. Persistent visual motion continues through quiet or steady passages. The starting renderer uses presets to map features to feedback zoom, deformation, tearing, grain, and decay. The next milestone is to make these mappings data-driven rather than hard-coded.
+Feature curves are normalized per clip: `low` (30–180 Hz), `mid` (180–2000 Hz), `high` (2–9 kHz), RMS, positive spectral flux, and slow RMS. Persistent visual motion continues through quiet or steady passages. Presets are TOML files ([src/vidgen/presets/](src/vidgen/presets/)); `--preset` takes a built-in name or a path to your own file.
+
+```toml
+[params]                 # base values; each is clamped to fixed bounds (see PARAMS in modulation.py)
+persistence = 0.973
+warp = 0.6
+
+[settings]               # static: tint (BGR), levels, saturation, blur, warp_speed, glitch_threshold
+levels = 12
+
+[[mappings]]             # applied in file order
+feature = "mid"          # low | mid | high | rms | flux | slow | lfo
+param = "warp"           # zoom rotation shift_x shift_y warp warp_phase_x warp_phase_y persistence
+scale = 2.0              #   edge_gain glitch brightness hue_shift grain
+offset = 0.0
+smooth = 0.5             # 0 <= smooth < 1, exponential smoothing of the source
+clip = [0.0, 1.0]        # optional, applied to the scaled value
+mode = "add"             # add | multiply | blend (blend uses `amount`, 0..1)
+# lfo only: rate_hz = 0.05, phase_deg = 90
+```
+
+Order per mapping: source, smooth, `value*scale+offset`, clip, combine into the parameter.
 
 The CLI is deliberately independent of ComfyUI for procedural and existing-image renders. The initial code uses a single frame-feedback buffer; it is not diffusion-per-frame or a conventional equalizer visualizer.
 
@@ -55,6 +76,9 @@ The CLI is deliberately independent of ComfyUI for procedural and existing-image
 
 - **RTX 3060 12 GB:** ComfyUI is optional and only generates still images; avoid prescribing any checkpoint until its license and local VRAM behavior are confirmed. The renderer and audio analyzer run on CPU.
 - **Reproducibility:** fixed RNG seed, explicit preset, FPS, image, audio, and CLI parameters. Different ffmpeg/OpenCV builds may differ slightly in encoded bits.
+- **Manifest:** every render writes `<output>.manifest.json` with package/ffmpeg versions, git commit and dirty flag, the command line, SHA-256 of audio and source, the full preset content and hash, seed, video settings, the ffmpeg command, and the output hash. For ComfyUI sources it also records the prompt_id, workflow hash and content, overrides, and referenced model files. Model licenses are never inferred: they read `UNVERIFIED` unless you pass `--model-license FILE=LICENSE`, and the weights themselves are not hashed because they live on the server.
+- **Cancellation:** video is written to `<name>.partial.mp4` and renamed only on success, so Ctrl-C, SIGTERM, `--max-seconds` or an ffmpeg failure never leaves a truncated file or overwrites an existing one (exit 130 on cancel).
+- **ComfyUI recovery:** the prompt_id is saved to `<source>.job.json` before polling. Rerunning the same command collects or resumes that job instead of queueing a duplicate; a changed workflow, an unknown job (e.g. after a server restart) or `--comfy-resubmit` queues a new one. A timeout is an ambiguous outcome, so the error prints the prompt_id.
 - **Legal:** the project itself is MIT-licensed. Transitive dependencies and ffmpeg codecs may have distinct applicable open-source licenses. No AI model weights are included.
 - **Not yet included:** MIDI or real-time audio capture, visual patch graph, GPU shader acceleration, crossfades, temporal segmentation, and render resume. They are proposed follow-up milestones, not claimed features.
 

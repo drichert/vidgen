@@ -5,6 +5,8 @@ description = "Heavy warp with edge-overlay accretion and harsh grain."
 tint = [0.70, 0.88, 1.04]
 levels = 12
 saturation = 2.6
+autolevel = 0.55
+gamma = 0.9
 
 [params]
 persistence = 0.985

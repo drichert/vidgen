@@ -5,6 +5,8 @@ description = "Warm-to-cool drifting analog feedback with flux-driven line tears
 tint = [0.85, 0.95, 1.03]
 levels = 12
 saturation = 2.2
+autolevel = 0.55
+gamma = 0.9
 
 [params]
 persistence = 0.973

@@ -5,6 +5,8 @@ description = "Slow, soft, blurred drift with no grain or glitching."
 tint = [0.90, 0.95, 1.00]
 levels = 24
 saturation = 1.4
+autolevel = 0.55
+gamma = 0.9
 blur = true
 
 [params]

@@ -5,6 +5,8 @@ description = "Colour-preserving feedback for supplied or ComfyUI-generated imag
 tint = [1.0, 1.0, 1.0]
 levels = 32
 saturation = 1.0
+autolevel = 0.85
+gamma = 0.85
 
 [params]
 persistence = 0.96

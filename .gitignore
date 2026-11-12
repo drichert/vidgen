@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+*.mp4
+*.mov
+*.wav
+*.flac
+*.mp3
+*.source.png
+*.features.json
+outputs/

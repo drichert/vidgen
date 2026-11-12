@@ -1,0 +1,26 @@
+[project]
+name = "vidgen"
+version = "0.1.0"
+description = "Open-source, audio-reactive generative video instrument with optional ComfyUI sources"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+dependencies = [
+  "numpy>=1.26,<3",
+  "opencv-python-headless>=4.8,<5",
+  "scipy>=1.11,<2",
+  "requests>=2.31,<3",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<10"]
+
+[project.scripts]
+vidgen = "vidgen.cli:run"
+
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

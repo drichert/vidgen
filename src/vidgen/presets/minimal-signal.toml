@@ -1,0 +1,81 @@
+name = "minimal-signal"
+description = "Slow, soft, blurred drift with no grain or glitching."
+
+[settings]
+tint = [0.90, 0.95, 1.00]
+levels = 24
+saturation = 1.4
+blur = true
+
+[params]
+persistence = 0.974
+zoom = 1.001
+warp = 0.18
+hue_shift = 100
+brightness = 0.88
+
+[[mappings]]
+feature = "low"
+param = "zoom"
+scale = 0.011
+
+[[mappings]]
+feature = "lfo"
+param = "zoom"
+scale = 0.002
+rate_hz = 0.06525
+
+[[mappings]]
+feature = "lfo"
+param = "rotation"
+scale = 0.085
+rate_hz = 0.03661
+
+[[mappings]]
+feature = "mid"
+param = "rotation"
+scale = 0.08
+
+[[mappings]]
+feature = "lfo"
+param = "shift_x"
+scale = 0.35
+rate_hz = 0.05889
+
+[[mappings]]
+feature = "lfo"
+param = "shift_y"
+scale = 0.35
+rate_hz = 0.04934
+phase_deg = 90
+
+[[mappings]]
+feature = "mid"
+param = "warp"
+scale = 0.6
+
+[[mappings]]
+feature = "low"
+param = "warp_phase_x"
+scale = 3.0
+
+[[mappings]]
+feature = "mid"
+param = "warp_phase_y"
+scale = 2.0
+
+[[mappings]]
+feature = "lfo"
+param = "hue_shift"
+scale = 14
+rate_hz = 0.00796
+
+[[mappings]]
+feature = "slow"
+param = "hue_shift"
+scale = 20
+
+[[mappings]]
+feature = "slow"
+param = "brightness"
+scale = 0.2

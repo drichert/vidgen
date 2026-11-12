@@ -39,6 +39,17 @@ uv run vidgen render --audio track.wav --comfy-workflow workflows/still-api.json
   --keep-comfy-source outputs/seed.png --output outputs/ai-feedback.mp4
 ```
 
+**Default still workflow: MOSS-Image-Base.** [workflows/moss-image-base-still.api.json](workflows/moss-image-base-still.api.json) uses ComfyUI's native MOSS-Image support (a ComfyUI build that includes it; `moss_image` must appear in the `CLIPLoader` types). Place the [Comfy-Org/MOSS-Image](https://huggingface.co/Comfy-Org/MOSS-Image) files `moss_image_base_int8_convrot` (diffusion_models), `qwen3.5_9b_int8_convrot` (text_encoders) and `flux2-vae_small` (vae) yourself; vidgen never downloads weights. Its model card lists Apache-2.0, but verify each file's license yourself and record it:
+
+```bash
+uv run vidgen render --audio track.wav --comfy-workflow workflows/moss-image-base-still.api.json \
+  --model-license moss_image_base_int8_convrot.safetensors=Apache-2.0 \
+  --model-license qwen3.5_9b_int8_convrot.safetensors=Apache-2.0 \
+  --model-license flux2-vae_small.safetensors=Apache-2.0 --output outputs/moss.mp4
+```
+
+Verified once on an RTX 3060 12 GB (ComfyUI 0.42.0): a 1024×576 still plus a 10 s 640×360 render took about 60 s end to end (single run, not a benchmark).
+
 `--comfy-set NODE.FIELD=VALUE` modifies an existing input in the exported JSON. `NODE` is the workflow node ID, not a fixed or portable preset. Numbers/booleans/arrays are parsed as JSON; other strings are accepted. The client checks `/object_info`, submits `/prompt`, polls `/history/{prompt_id}`, and downloads the first image using `/view`. It does not install custom nodes, download model weights, start ComfyUI, or require GPU-based video generation.
 
 ## Audio features and modularity
@@ -74,7 +85,7 @@ The CLI is deliberately independent of ComfyUI for procedural and existing-image
 
 ## Quality, licensing, constraints
 
-- **RTX 3060 12 GB:** ComfyUI is optional and only generates still images; avoid prescribing any checkpoint until its license and local VRAM behavior are confirmed. The renderer and audio analyzer run on CPU.
+- **RTX 3060 12 GB:** ComfyUI is optional and only generates still images; the default MOSS-Image-Base workflow was exercised once on this GPU; confirm licenses and VRAM behavior for any other model. The renderer and audio analyzer run on CPU.
 - **Reproducibility:** fixed RNG seed, explicit preset, FPS, image, audio, and CLI parameters. Different ffmpeg/OpenCV builds may differ slightly in encoded bits.
 - **Manifest:** every render writes `<output>.manifest.json` with package/ffmpeg versions, git commit and dirty flag, the command line, SHA-256 of audio and source, the full preset content and hash, seed, video settings, the ffmpeg command, and the output hash. For ComfyUI sources it also records the prompt_id, workflow hash and content, overrides, and referenced model files. Model licenses are never inferred: they read `UNVERIFIED` unless you pass `--model-license FILE=LICENSE`, and the weights themselves are not hashed because they live on the server.
 - **Cancellation:** video is written to `<name>.partial.mp4` and renamed only on success, so Ctrl-C, SIGTERM, `--max-seconds` or an ffmpeg failure never leaves a truncated file or overwrites an existing one (exit 130 on cancel).

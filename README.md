@@ -65,7 +65,7 @@ Feature curves are normalized per clip: `low` (30–180 Hz), `mid` (180–2000 H
 persistence = 0.973
 warp = 0.6
 
-[settings]               # static: tint (BGR), levels, saturation, blur, warp_speed, glitch_threshold
+[settings]               # static: tint (BGR), levels, saturation, autolevel, autolevel_pct, gamma, blur, warp_speed, glitch_threshold
 levels = 12
 
 [[mappings]]             # applied in file order

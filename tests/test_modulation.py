@@ -132,3 +132,10 @@ def test_same_audio_different_preset_files_differ_and_same_preset_reproduces():
         return [r.frame(i, f) for i, f in enumerate(feats)][-1]
     assert np.array_equal(run("analog-feedback"), run("analog-feedback"))
     assert not np.array_equal(run("analog-feedback"), run("industrial-decay"))
+
+
+def test_tone_settings_validated():
+    for bad in ({"autolevel": 2}, {"gamma": 0}, {"autolevel_pct": [90, 10]}, {"autolevel_pct": [1]}):
+        with pytest.raises(PresetError):
+            parse_preset({"settings": bad})
+    assert load_preset("analog-feedback-lifted").settings["autolevel"] == 0.85

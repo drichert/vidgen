@@ -78,3 +78,22 @@ def test_feedback_does_not_collapse_or_saturate(preset):
     gray = frame.mean(axis=2)
     assert 40 < gray.mean() < 215
     assert gray.std() > 8
+
+
+def test_autolevel_widens_tonal_range_and_is_off_by_default():
+    import numpy as np
+    from vidgen.modulation import parse_preset
+    from vidgen.renderer import FeedbackRenderer
+
+    dark = np.full((64, 64, 3), 20, np.uint8)
+    dark[:, 32:] = 60
+    feats = {"low": 0.0, "mid": 0.0, "high": 0.0, "flux": 0.0, "slow": 0.0, "rms": 0.0}
+
+    def spread(settings):
+        preset = parse_preset({"settings": {"levels": 256, **settings}})
+        r = FeedbackRenderer(dark, preset=preset, seed=1, fps=12)
+        frame = r.frame(0, feats)
+        gray = frame.mean(axis=2)
+        return float(np.percentile(gray, 99) - np.percentile(gray, 1))
+
+    assert spread({"autolevel": 1.0}) > 2 * spread({})

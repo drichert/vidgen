@@ -37,6 +37,9 @@ SETTINGS: dict[str, Any] = {
     "tint": [1.0, 1.0, 1.0],  # BGR gain on the displayed copy only
     "levels": 12,
     "saturation": 1.0,
+    "autolevel": 0.0,  # 0..1 display-only tonal stretch toward full range; 0 = off
+    "autolevel_pct": [1.0, 99.5],  # percentiles mapped to black/white
+    "gamma": 1.0,  # display-only; <1 lifts shadows
     "blur": False,
     "warp_speed": [.63, .43],  # rad/s drift of the warp field
     "glitch_threshold": .45,
@@ -123,12 +126,24 @@ def parse_preset(data: dict[str, Any], default_name: str = "custom") -> Preset:
     bad = set(settings) - set(SETTINGS)
     if bad:
         raise PresetError(f"unknown settings {sorted(bad)}; known: {sorted(SETTINGS)}")
-    for key in ("tint", "warp_speed"):
+    for key in ("tint", "warp_speed", "autolevel_pct"):
         if key in settings:
             n = 3 if key == "tint" else 2
             if not isinstance(settings[key], list) or len(settings[key]) != n:
                 raise PresetError(f"settings.{key} must be a list of {n} numbers")
             settings[key] = [_num(v, f"settings.{key}") for v in settings[key]]
+    if "autolevel" in settings:
+        settings["autolevel"] = _num(settings["autolevel"], "settings.autolevel")
+        if not 0 <= settings["autolevel"] <= 1:
+            raise PresetError("settings.autolevel must be within 0..1")
+    if "gamma" in settings:
+        settings["gamma"] = _num(settings["gamma"], "settings.gamma")
+        if not .2 <= settings["gamma"] <= 3:
+            raise PresetError("settings.gamma must be within 0.2..3")
+    if "autolevel_pct" in settings:
+        lo, hi = settings["autolevel_pct"]
+        if not 0 <= lo < hi <= 100:
+            raise PresetError("settings.autolevel_pct must be [low, high] with 0 <= low < high <= 100")
     mappings = tuple(_mapping(m, i) for i, m in enumerate(data.get("mappings", [])))
     return Preset(str(data.get("name", default_name)), str(data.get("description", "")), params, settings, mappings)
 

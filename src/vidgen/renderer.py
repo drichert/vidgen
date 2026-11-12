@@ -55,6 +55,7 @@ class FeedbackRenderer:
         self.height, self.width = source.shape[:2]
         self.rng = np.random.default_rng(seed)
         self.fps = fps
+        self._levels: np.ndarray | None = None  # smoothed (black, white) points for autolevel
         self.x, self.y = np.meshgrid(
             np.arange(self.width, dtype=np.float32),
             np.arange(self.height, dtype=np.float32),
@@ -96,6 +97,7 @@ class FeedbackRenderer:
         step = max(1, 256 // int(cfg["levels"]))
         out = (np.round(frame.astype(np.float32) / step) * step)
         out *= p["brightness"] * np.asarray(cfg["tint"], dtype=np.float32)
+        out = self._tone(out, cfg)
         if p["grain"] > 0:
             out += self.rng.normal(0, p["grain"], (self.height, self.width, 1))
         frame = np.clip(out, 0, 255).astype(np.uint8)
@@ -104,6 +106,23 @@ class FeedbackRenderer:
         hsv[..., 0] = (hsv[..., 0] + int(p["hue_shift"])) % 180
         hsv[..., 1] = np.clip(hsv[..., 1] * cfg["saturation"] + 25, 0, 255)
         return cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
+
+
+    def _tone(self, out: np.ndarray, cfg: dict) -> np.ndarray:
+        """Display-only tonal stretch and gamma. Black/white points are smoothed over time so
+        quiet and loud passages don't pump the whole image."""
+        if cfg["autolevel"] > 0:
+            lo_pct, hi_pct = cfg["autolevel_pct"]
+            small = out[::4, ::4]
+            target = np.percentile(small, [lo_pct, hi_pct]).astype(np.float32)
+            target[1] = max(target[1], target[0] + 32)  # never amplify a near-flat frame
+            self._levels = target if self._levels is None else self._levels + .08 * (target - self._levels)
+            black, white = self._levels
+            stretched = (out - black) * (255.0 / (white - black))
+            out = out + cfg["autolevel"] * (stretched - out)
+        if cfg["gamma"] != 1.0:
+            out = 255.0 * np.power(np.clip(out, 0, 255) / 255.0, cfg["gamma"])
+        return out
 
 
 class RenderTimeout(RuntimeError):

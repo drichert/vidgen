@@ -100,3 +100,7 @@ uv run --extra dev pytest -q
 ```
 
 See [Claude implementation handoff](docs/CLAUDE_HANDOFF.md) for continuation scope and explicit review checks.
+
+## AI-directed development
+
+See [docs/AI_DEVELOPMENT.md](docs/AI_DEVELOPMENT.md) for development direction, AI contributions, significant decisions, verification evidence and case-study notes. Project-specific source of truth, safety instructions and existing handoffs still take precedence.
